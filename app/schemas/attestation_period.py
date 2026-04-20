@@ -72,7 +72,7 @@ class AttestationPeriodUpdate(BaseModel):
 
 class AttestationPeriodRead(AttestationPeriodBase):
     id: UUID
-    created_by: UUID | None
+    created_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
 

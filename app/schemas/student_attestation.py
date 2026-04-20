@@ -59,18 +59,33 @@ class GenerateStudentAttestationsResult(BaseModel):
 class ManagerStudentAttestationTableRow(BaseModel):
     student_attestation_id: UUID
     student_id: UUID
+
     admission_year: int | None
     course: int
     fio: str
+
     funding_type: str | None
     education_program_name: str
     duration_years: int
     specialty: str | None
+
+    academic_status: str | None
     department_name: str
     supervisor_name: str | None
+    dissertation_topic: str | None
+
     is_admitted: bool
     debt_note: str | None
     status: str
+    attestation_result: str | None
+
+    average_score: float | None
+    publications_count: int | None
+    pedagogical_practice: bool | None
+    research_practice: bool | None
+    implementation_act: bool | None
+    predefense_date: str | None
+    status_change_reason: str | None
 
 
 class StudentAttestationAdmissionUpdateItem(BaseModel):
