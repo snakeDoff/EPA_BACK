@@ -29,9 +29,11 @@ api_router = APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(manager_students_router)
 api_router.include_router(manager_students_crud_router)
+
+api_router.include_router(academic_director_attestation_lifecycle_router)
 api_router.include_router(academic_director_attestation_periods_router)
 api_router.include_router(academic_director_attestation_criteria_router)
-api_router.include_router(academic_director_attestation_lifecycle_router)
+
 api_router.include_router(manager_student_attestations_router)
 api_router.include_router(expert_staff_members_router)
 api_router.include_router(expert_students_router)

@@ -27,19 +27,17 @@ class AttestationPeriodService:
         payload: AttestationPeriodCreate,
         created_by=None,
     ) -> AttestationPeriod:
-        period = AttestationPeriod(
-            title=payload.title,
-            type=payload.type,
-            year=payload.year,
-            season=payload.season,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            status=payload.status,
-            description=payload.description,
-            is_active=payload.is_active,
-            is_completed=payload.is_completed,
-            current_stage_number=payload.current_stage_number,
-        )
+        payload_data = payload.model_dump(exclude_unset=True)
+
+        allowed_fields = {column.key for column in AttestationPeriod.__table__.columns}
+        filtered_data = {
+            key: value
+            for key, value in payload_data.items()
+            if key in allowed_fields
+        }
+
+        period = AttestationPeriod(**filtered_data)
+
         self.session.add(period)
         self.session.commit()
         self.session.refresh(period)
@@ -52,9 +50,33 @@ class AttestationPeriodService:
     ) -> AttestationPeriod:
         update_data = payload.model_dump(exclude_unset=True)
 
+        allowed_fields = {column.key for column in AttestationPeriod.__table__.columns}
+
         for field, value in update_data.items():
-            setattr(period, field, value)
+            if field in allowed_fields:
+                setattr(period, field, value)
 
         self.session.commit()
         self.session.refresh(period)
         return period
+
+    def get_current_attestation(self) -> dict | None:
+        stmt = (
+            select(AttestationPeriod)
+            .where(AttestationPeriod.type == "attestation")
+            .where(AttestationPeriod.is_active.is_(True))
+            .where(AttestationPeriod.is_completed.is_(False))
+            .order_by(AttestationPeriod.year.desc(), AttestationPeriod.created_at.desc())
+        )
+        item = self.session.scalar(stmt)
+
+        if item is None:
+            return None
+
+        return {
+            "id": item.id,
+            "current_attestation": item.season,
+            "start_date": item.start_date,
+            "end_date": item.end_date,
+            "current_stage_number": item.current_stage_number,
+        }

@@ -14,7 +14,7 @@ from app.schemas.attestation_period import (
 from app.services.attestation_period_service import AttestationPeriodService
 
 router = APIRouter(
-    prefix="/academic-director/attestation-periods",
+    prefix="/academic-director/attestation",
     tags=["academic-director-attestation-periods"],
 )
 
@@ -25,7 +25,21 @@ def list_attestation_periods(
 ) -> list[AttestationPeriodRead]:
     service = AttestationPeriodService(db)
     periods = service.list_periods()
-    return [AttestationPeriodRead.model_validate(period) for period in periods]
+    return [AttestationPeriodRead.model_validate(item) for item in periods]
+
+
+@router.get("/{period_id}", response_model=AttestationPeriodRead)
+def get_attestation_period(
+    period_id: UUID,
+    db: Session = Depends(get_db),
+) -> AttestationPeriodRead:
+    service = AttestationPeriodService(db)
+    item = service.get_period(period_id)
+
+    if item is None:
+        raise HTTPException(status_code=404, detail="Attestation period not found")
+
+    return AttestationPeriodRead.model_validate(item)
 
 
 @router.post("", response_model=AttestationPeriodRead, status_code=201)
@@ -35,20 +49,6 @@ def create_attestation_period(
 ) -> AttestationPeriodRead:
     service = AttestationPeriodService(db)
     period = service.create_period(payload=payload, created_by=None)
-    return AttestationPeriodRead.model_validate(period)
-
-
-@router.get("/{period_id}", response_model=AttestationPeriodRead)
-def get_attestation_period(
-    period_id: UUID,
-    db: Session = Depends(get_db),
-) -> AttestationPeriodRead:
-    service = AttestationPeriodService(db)
-    period = service.get_period(period_id)
-
-    if period is None:
-        raise HTTPException(status_code=404, detail="Attestation period not found")
-
     return AttestationPeriodRead.model_validate(period)
 
 
