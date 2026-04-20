@@ -35,7 +35,10 @@ class AttestationPeriodService:
             start_date=payload.start_date,
             end_date=payload.end_date,
             status=payload.status,
-            created_by=created_by,
+            description=payload.description,
+            is_active=payload.is_active,
+            is_completed=payload.is_completed,
+            current_stage_number=payload.current_stage_number,
         )
         self.session.add(period)
         self.session.commit()
