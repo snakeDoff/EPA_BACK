@@ -49,10 +49,16 @@ class CommissionService:
 
         return self.session.scalar(stmt)
 
-    def create_commission(self, period_id, payload: AttestationCommissionCreate, created_by=None):
+    def create_commission(
+        self,
+        period_id,
+        department_id,
+        payload: AttestationCommissionCreate,
+        created_by=None,
+    ):
         commission = AttestationCommission(
             attestation_period_id=period_id,
-            department_id=payload.department_id,
+            department_id=department_id,
             name=payload.name,
             status=payload.status,
             notes=payload.notes,
@@ -92,6 +98,10 @@ class CommissionService:
             raise ValueError("Confirmed commission cannot be edited")
 
         update_data = payload.model_dump(exclude_unset=True)
+
+        # department_id из payload игнорируем: он должен идти от эксперта
+        update_data.pop("department_id", None)
+
         for field, value in update_data.items():
             setattr(commission, field, value)
 
@@ -248,3 +258,18 @@ class CommissionService:
             raise ValueError(f"Staff member not found: {staff_member_id}")
         if not staff_member.is_active or not staff_member.can_be_commission_member:
             raise ValueError(f"Staff member cannot be included in commission: {staff_member_id}")
+        
+    def list_all_commissions_for_director(self, period_id):
+        stmt = (
+            select(AttestationCommission)
+            .options(
+                selectinload(AttestationCommission.members).selectinload(CommissionMember.staff_member)
+            )
+            .where(AttestationCommission.attestation_period_id == period_id)
+            .order_by(
+                AttestationCommission.meeting_date.asc().nulls_last(),
+                AttestationCommission.start_time.asc().nulls_last(),
+                AttestationCommission.created_at.desc(),
+            )
+        )
+        return list(self.session.scalars(stmt).unique().all())

@@ -3,9 +3,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
+from app.db.models import StaffMember
 from app.schemas.commission import (
     AssignStudentAttestationsToCommissionPayload,
     AssignStudentAttestationsToCommissionResult,
@@ -43,6 +45,29 @@ def get_current_expert_user_id(
         raise HTTPException(status_code=400, detail="Invalid X-User-Id header") from exc
 
 
+def resolve_expert_department_id(
+    db: Session,
+    current_user_id: UUID,
+) -> UUID:
+    staff_member = db.scalar(
+        select(StaffMember).where(StaffMember.user_id == current_user_id)
+    )
+
+    if staff_member is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Expert staff profile not found",
+        )
+
+    if staff_member.department_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Expert department is not configured",
+        )
+
+    return staff_member.department_id
+
+
 @router.get("/{period_id}/commissions", response_model=list[AttestationCommissionRead])
 def list_commissions(
     period_id: UUID,
@@ -63,9 +88,15 @@ def create_commission(
 ) -> AttestationCommissionRead:
     service = CommissionService(db)
 
+    department_id = resolve_expert_department_id(
+        db=db,
+        current_user_id=current_user_id,
+    )
+
     try:
         item = service.create_commission(
             period_id=period_id,
+            department_id=department_id,
             payload=payload,
             created_by=current_user_id,
         )

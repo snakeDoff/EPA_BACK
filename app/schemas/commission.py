@@ -98,7 +98,7 @@ class CommissionMemberRead(BaseModel):
 
 
 class AttestationCommissionCreate(BaseModel):
-    department_id: UUID
+    department_id: UUID | None = None
     name: str
     status: str = "draft"
     notes: str | None = None

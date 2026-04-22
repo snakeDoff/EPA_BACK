@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, time
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,7 +28,7 @@ class AttestationCommission(UUIDPKMixin, TimestampMixin, Base):
             name="uq_attestation_commissions_period_name",
         ),
         CheckConstraint(
-            "status in ('draft', 'formed', 'completed')",
+            "status in ('draft', 'formed', 'completed', 'confirmed')",
             name="chk_attestation_commissions_status",
         ),
         Index("ix_attestation_commissions_period_id", "attestation_period_id"),
@@ -49,6 +50,11 @@ class AttestationCommission(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    meeting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    meeting_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -105,6 +111,7 @@ class CommissionMember(UUIDPKMixin, TimestampMixin, Base):
 
     role_in_commission: Mapped[str] = mapped_column(String(50), nullable=False)
     membership_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    participation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_voting_member: Mapped[bool] = mapped_column(nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

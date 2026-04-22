@@ -23,6 +23,7 @@ from app.api.v1.manager_student_attestations import (
 )
 from app.api.v1.manager_students import router as manager_students_router
 from app.api.v1.manager_students_crud import router as manager_students_crud_router
+from app.api.v1.academic_director_commissions import router as academic_director_commissions_router
 
 api_router = APIRouter()
 
@@ -33,6 +34,7 @@ api_router.include_router(manager_students_crud_router)
 api_router.include_router(academic_director_attestation_lifecycle_router)
 api_router.include_router(academic_director_attestation_periods_router)
 api_router.include_router(academic_director_attestation_criteria_router)
+api_router.include_router(academic_director_commissions_router)
 
 api_router.include_router(manager_student_attestations_router)
 api_router.include_router(expert_staff_members_router)
