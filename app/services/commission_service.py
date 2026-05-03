@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import select
 
 from app.db.models import (
     AttestationCommission,
@@ -49,10 +50,16 @@ class CommissionService:
 
         return self.session.scalar(stmt)
 
-    def create_commission(self, period_id, payload: AttestationCommissionCreate, created_by=None):
+    def create_commission(
+        self,
+        period_id,
+        department_id,
+        payload: AttestationCommissionCreate,
+        created_by=None,
+    ):
         commission = AttestationCommission(
             attestation_period_id=period_id,
-            department_id=payload.department_id,
+            department_id=department_id,
             name=payload.name,
             status=payload.status,
             notes=payload.notes,
@@ -65,22 +72,52 @@ class CommissionService:
         self.session.add(commission)
         self.session.flush()
 
-        # Если members предоставлены, добавляем членов комиссии
+        added_staff_member_ids = set()
+
+        # Автоматически добавляем эксперта-создателя в комиссию
+        if created_by is not None:
+            creator_staff_member = self.session.scalar(
+                select(StaffMember).where(StaffMember.user_id == created_by)
+            )
+
+            if creator_staff_member is not None:
+                self._validate_staff_member(creator_staff_member.id)
+
+                self.session.add(
+                    CommissionMember(
+                        commission_id=commission.id,
+                        staff_member_id=creator_staff_member.id,
+                        role_in_commission="member",
+                        membership_type="mandatory",
+                        participation_note="Создатель комиссии",
+                        is_voting_member=True,
+                        sort_order=0,
+                    )
+                )
+
+                added_staff_member_ids.add(creator_staff_member.id)
+
+        # Если members предоставлены, добавляем остальных членов комиссии
         if payload.members:
             for item in payload.members:
+                if item.staff_member_id in added_staff_member_ids:
+                    continue
+
                 self._validate_staff_member(item.staff_member_id)
 
                 self.session.add(
                     CommissionMember(
                         commission_id=commission.id,
                         staff_member_id=item.staff_member_id,
-                        role_in_commission=item.role_in_commission,
-                        membership_type=item.membership_type,
+                        role_in_commission=item.role_in_commission or "member",
+                        membership_type=item.membership_type or "additional",
                         participation_note=item.participation_note,
                         is_voting_member=item.is_voting_member,
                         sort_order=item.sort_order,
                     )
                 )
+
+                added_staff_member_ids.add(item.staff_member_id)
 
         self.session.commit()
         return self.get_commission(commission.id, created_by=created_by)
