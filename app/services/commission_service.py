@@ -49,16 +49,10 @@ class CommissionService:
 
         return self.session.scalar(stmt)
 
-    def create_commission(
-        self,
-        period_id,
-        department_id,
-        payload: AttestationCommissionCreate,
-        created_by=None,
-    ):
+    def create_commission(self, period_id, payload: AttestationCommissionCreate, created_by=None):
         commission = AttestationCommission(
             attestation_period_id=period_id,
-            department_id=department_id,
+            department_id=payload.department_id,
             name=payload.name,
             status=payload.status,
             notes=payload.notes,
@@ -71,20 +65,22 @@ class CommissionService:
         self.session.add(commission)
         self.session.flush()
 
-        for item in payload.members:
-            self._validate_staff_member(item.staff_member_id)
+        # Если members предоставлены, добавляем членов комиссии
+        if payload.members:
+            for item in payload.members:
+                self._validate_staff_member(item.staff_member_id)
 
-            self.session.add(
-                CommissionMember(
-                    commission_id=commission.id,
-                    staff_member_id=item.staff_member_id,
-                    role_in_commission=item.role_in_commission,
-                    membership_type=item.membership_type,
-                    participation_note=item.participation_note,
-                    is_voting_member=item.is_voting_member,
-                    sort_order=item.sort_order,
+                self.session.add(
+                    CommissionMember(
+                        commission_id=commission.id,
+                        staff_member_id=item.staff_member_id,
+                        role_in_commission=item.role_in_commission,
+                        membership_type=item.membership_type,
+                        participation_note=item.participation_note,
+                        is_voting_member=item.is_voting_member,
+                        sort_order=item.sort_order,
+                    )
                 )
-            )
 
         self.session.commit()
         return self.get_commission(commission.id, created_by=created_by)
@@ -206,8 +202,8 @@ class CommissionService:
         member = CommissionMember(
             commission_id=commission_id,
             staff_member_id=payload.staff_member_id,
-            role_in_commission=payload.role_in_commission,
-            membership_type=payload.membership_type,
+            role_in_commission=payload.role_in_commission or "member",  # Default if None
+            membership_type=payload.membership_type or "additional",  # Default if None
             participation_note=payload.participation_note,
             is_voting_member=payload.is_voting_member,
             sort_order=payload.sort_order,

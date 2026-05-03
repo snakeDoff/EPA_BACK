@@ -11,15 +11,18 @@ from app.schemas.student_attestation import ManagerStudentAttestationTableRow
 
 class CommissionMemberCreate(BaseModel):
     staff_member_id: UUID
-    role_in_commission: str
-    membership_type: str
+    role_in_commission: str | None = None
+    membership_type: str | None = None
     participation_note: str | None = None
     is_voting_member: bool = True
     sort_order: int = 0
 
     @field_validator("role_in_commission")
     @classmethod
-    def validate_role(cls, value: str) -> str:
+    def validate_role(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
         allowed = {"chair", "deputy_chair", "member", "secretary"}
         if value not in allowed:
             raise ValueError(f"role_in_commission must be one of: {sorted(allowed)}")
@@ -27,7 +30,10 @@ class CommissionMemberCreate(BaseModel):
 
     @field_validator("membership_type")
     @classmethod
-    def validate_membership_type(cls, value: str) -> str:
+    def validate_membership_type(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
         allowed = {"mandatory", "additional"}
         if value not in allowed:
             raise ValueError(f"membership_type must be one of: {sorted(allowed)}")
@@ -98,7 +104,7 @@ class CommissionMemberRead(BaseModel):
 
 
 class AttestationCommissionCreate(BaseModel):
-    department_id: UUID | None = None
+    department_id: UUID | None = None  # Сделано необязательным
     name: str
     status: str = "draft"
     notes: str | None = None
@@ -106,7 +112,7 @@ class AttestationCommissionCreate(BaseModel):
     start_time: time | None = None
     end_time: time | None = None
     meeting_location: str | None = None
-    members: list[CommissionMemberCreate]
+    members: list[CommissionMemberCreate] | None = None  # Сделано необязательным
 
     @field_validator("name", "status", "notes", "meeting_location", mode="before")
     @classmethod
