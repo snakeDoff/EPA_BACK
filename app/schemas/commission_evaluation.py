@@ -49,15 +49,7 @@ class CommissionMemberEvaluationUpsertPayload(BaseModel):
             return value or None
         return value
 
-    @field_validator("overall_recommendation")
-    @classmethod
-    def validate_recommendation(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        allowed = {"passed", "passed_conditionally", "revision_required", "not_passed"}
-        if value not in allowed:
-            raise ValueError(f"overall_recommendation must be one of: {sorted(allowed)}")
-        return value
+
 
 
 class CommissionMemberCriterionEvaluationRead(BaseModel):
