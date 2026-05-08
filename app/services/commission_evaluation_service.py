@@ -43,6 +43,31 @@ class CommissionEvaluationService:
         },
     }
 
+    PUBLICATION_PATTERNS = (
+        "публикац",
+        "аффилиацией",
+    )
+
+    PEDAGOGICAL_PRACTICE_PATTERNS = (
+        "научно-педагог",
+    )
+
+    RESEARCH_PRACTICE_PATTERNS = (
+        "научно-исследовательская практика",
+        "стажиров",
+        "грант",
+        "конференц",
+        "рид",
+        "научный доклад",
+        "научные семинары",
+        "симпозиум",
+    )
+
+    IMPLEMENTATION_ACT_PATTERNS = (
+        "акт внедр",
+        "акты внедр",
+    )
+
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -271,8 +296,140 @@ class CommissionEvaluationService:
         else:
             evaluation.submitted_at = None
 
+        self.session.flush()
+        self._sync_student_metrics_from_submitted_evaluations(
+            student_attestation_id=student_attestation_id,
+        )
+
         self.session.commit()
         return self.get_evaluation(evaluation.id)
+
+    def _sync_student_metrics_from_submitted_evaluations(
+        self,
+        student_attestation_id,
+    ) -> None:
+        stmt = (
+            select(StudentAttestation)
+            .options(
+                selectinload(StudentAttestation.student),
+                selectinload(StudentAttestation.member_evaluations)
+                .selectinload(CommissionMemberEvaluation.criterion_values)
+                .selectinload(CommissionMemberCriterionEvaluation.student_attestation_criterion),
+            )
+            .where(StudentAttestation.id == student_attestation_id)
+        )
+
+        attestation = self.session.scalar(stmt)
+
+        if attestation is None or attestation.student is None:
+            return
+
+        submitted_evaluations = [
+            item
+            for item in attestation.member_evaluations
+            if item.status == "submitted"
+        ]
+
+        student = attestation.student
+
+        student.publications_count = self._extract_max_count_metric(
+            submitted_evaluations,
+            patterns=self.PUBLICATION_PATTERNS,
+        )
+        student.pedagogical_practice = self._extract_any_bool_or_count_metric(
+            submitted_evaluations,
+            patterns=self.PEDAGOGICAL_PRACTICE_PATTERNS,
+        )
+        student.research_practice = self._extract_any_bool_or_count_metric(
+            submitted_evaluations,
+            patterns=self.RESEARCH_PRACTICE_PATTERNS,
+        )
+        student.implementation_act = self._extract_any_bool_or_count_metric(
+            submitted_evaluations,
+            patterns=self.IMPLEMENTATION_ACT_PATTERNS,
+        )
+
+    def _extract_max_count_metric(
+        self,
+        submitted_evaluations: list[CommissionMemberEvaluation],
+        *,
+        patterns: tuple[str, ...],
+    ) -> int | None:
+        values: list[int] = []
+
+        for evaluation in submitted_evaluations:
+            for criterion_value in evaluation.criterion_values:
+                criterion_text = self._criterion_search_text(criterion_value)
+
+                if not self._matches_any_pattern(criterion_text, patterns):
+                    continue
+
+                if criterion_value.count_value is not None:
+                    values.append(int(criterion_value.count_value))
+
+        if not values:
+            return None
+
+        return max(values)
+
+    def _extract_any_bool_or_count_metric(
+        self,
+        submitted_evaluations: list[CommissionMemberEvaluation],
+        *,
+        patterns: tuple[str, ...],
+    ) -> bool | None:
+        found_metric = False
+
+        for evaluation in submitted_evaluations:
+            for criterion_value in evaluation.criterion_values:
+                criterion_text = self._criterion_search_text(criterion_value)
+
+                if not self._matches_any_pattern(criterion_text, patterns):
+                    continue
+
+                if criterion_value.boolean_value is not None:
+                    found_metric = True
+                    if criterion_value.boolean_value:
+                        return True
+
+                if criterion_value.count_value is not None:
+                    found_metric = True
+                    if criterion_value.count_value > 0:
+                        return True
+
+                if criterion_value.score_value is not None:
+                    found_metric = True
+                    if criterion_value.score_value > 0:
+                        return True
+
+        if found_metric:
+            return False
+
+        return None
+
+    def _criterion_search_text(
+        self,
+        criterion_value: CommissionMemberCriterionEvaluation,
+    ) -> str:
+        criterion = criterion_value.student_attestation_criterion
+
+        parts = [
+            criterion.code,
+            criterion.name,
+            criterion.description,
+            criterion.group_code,
+            criterion.group_name,
+            criterion.unit_label,
+        ]
+
+        return " ".join(str(part).lower() for part in parts if part)
+
+    def _matches_any_pattern(
+        self,
+        value: str,
+        patterns: tuple[str, ...],
+    ) -> bool:
+        return any(pattern in value for pattern in patterns)
 
     def _validate_submittable(self, evaluation: CommissionMemberEvaluation) -> None:
         for item in evaluation.criterion_values:

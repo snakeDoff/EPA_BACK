@@ -153,18 +153,6 @@ class StudentAttestationService:
             student = student_attestation.student
 
             if student is not None:
-                if "publications_count" in fields_set:
-                    student.publications_count = item.publications_count
-
-                if "pedagogical_practice" in fields_set:
-                    student.pedagogical_practice = item.pedagogical_practice
-
-                if "research_practice" in fields_set:
-                    student.research_practice = item.research_practice
-
-                if "implementation_act" in fields_set:
-                    student.implementation_act = item.implementation_act
-
                 if "predefense_date" in fields_set:
                     student.predefense_date = self._parse_optional_date(item.predefense_date)
 
@@ -281,23 +269,19 @@ class StudentAttestationService:
         }
 
     def _calculate_average_score(self, attestation: StudentAttestation) -> float | None:
-        score_values: list[float] = []
+        values: list[float] = []
 
         for member_evaluation in attestation.member_evaluations:
             if member_evaluation.status != "submitted":
                 continue
 
-            for criterion_value in member_evaluation.criterion_values:
-                if (
-                    criterion_value.evaluation_type == "score"
-                    and criterion_value.score_value is not None
-                ):
-                    score_values.append(float(criterion_value.score_value))
+            if member_evaluation.overall_integral_score is not None:
+                values.append(float(member_evaluation.overall_integral_score))
 
-        if not score_values:
+        if not values:
             return None
 
-        return round(sum(score_values) / len(score_values), 2)
+        return round(sum(values) / len(values), 4)
 
     def _parse_optional_date(self, value: str | date | None) -> date | None:
         if value is None:
