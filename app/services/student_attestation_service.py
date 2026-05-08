@@ -297,20 +297,43 @@ class StudentAttestationService:
             .replace(" ", "_")
         )
 
-    def _criterion_matches(self, criterion_value, aliases=None, codes=None) -> bool:
+    def _add_search_values(self, target: list, value) -> None:
+        if value is None:
+            return
+
+        if isinstance(value, (str, int, float, bool)):
+            target.append(value)
+            return
+
+        if isinstance(value, dict):
+            for item in value.values():
+                self._add_search_values(target, item)
+            return
+
+        try:
+            for item in value:
+                self._add_search_values(target, item)
+        except TypeError:
+            target.append(value)
+
+    def _criterion_matches(
+        self,
+        criterion_value,
+        aliases=None,
+        codes=None,
+        names=None,
+        ids=None,
+        **filters,
+    ) -> bool:
         search_values = []
 
-        if aliases is not None:
-            if isinstance(aliases, str):
-                search_values.append(aliases)
-            else:
-                search_values.extend(aliases)
+        self._add_search_values(search_values, aliases)
+        self._add_search_values(search_values, codes)
+        self._add_search_values(search_values, names)
+        self._add_search_values(search_values, ids)
 
-        if codes is not None:
-            if isinstance(codes, str):
-                search_values.append(codes)
-            else:
-                search_values.extend(codes)
+        for value in filters.values():
+            self._add_search_values(search_values, value)
 
         normalized_search_values = {
             self._normalize_metric_key(value)
@@ -351,13 +374,26 @@ class StudentAttestationService:
 
     def _extract_int_metric(
         self,
-        criteria_values,
+        criteria_values=None,
         aliases=None,
         codes=None,
+        names=None,
+        ids=None,
         default: int = 0,
+        **filters,
     ) -> int:
+        if criteria_values is None:
+            criteria_values = filters.pop("criteria", None) or filters.pop("criterion_values", None)
+
         for criterion_value in criteria_values or []:
-            if not self._criterion_matches(criterion_value, aliases=aliases, codes=codes):
+            if not self._criterion_matches(
+                criterion_value,
+                aliases=aliases,
+                codes=codes,
+                names=names,
+                ids=ids,
+                **filters,
+            ):
                 continue
 
             value = self._first_not_none(
@@ -378,13 +414,26 @@ class StudentAttestationService:
 
     def _extract_float_metric(
         self,
-        criteria_values,
+        criteria_values=None,
         aliases=None,
         codes=None,
+        names=None,
+        ids=None,
         default: float = 0.0,
+        **filters,
     ) -> float:
+        if criteria_values is None:
+            criteria_values = filters.pop("criteria", None) or filters.pop("criterion_values", None)
+
         for criterion_value in criteria_values or []:
-            if not self._criterion_matches(criterion_value, aliases=aliases, codes=codes):
+            if not self._criterion_matches(
+                criterion_value,
+                aliases=aliases,
+                codes=codes,
+                names=names,
+                ids=ids,
+                **filters,
+            ):
                 continue
 
             value = self._first_not_none(
@@ -405,13 +454,26 @@ class StudentAttestationService:
 
     def _extract_bool_metric(
         self,
-        criteria_values,
+        criteria_values=None,
         aliases=None,
         codes=None,
+        names=None,
+        ids=None,
         default: bool = False,
+        **filters,
     ) -> bool:
+        if criteria_values is None:
+            criteria_values = filters.pop("criteria", None) or filters.pop("criterion_values", None)
+
         for criterion_value in criteria_values or []:
-            if not self._criterion_matches(criterion_value, aliases=aliases, codes=codes):
+            if not self._criterion_matches(
+                criterion_value,
+                aliases=aliases,
+                codes=codes,
+                names=names,
+                ids=ids,
+                **filters,
+            ):
                 continue
 
             value = self._get_value(criterion_value, "boolean_value")
