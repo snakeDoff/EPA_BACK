@@ -10,6 +10,7 @@ from app.db.models import (
     CommissionMember,
     CommissionMemberCriterionEvaluation,
     CommissionMemberEvaluation,
+    StaffMember,
     StudentAttestation,
 )
 from app.schemas.commission_evaluation import CommissionMemberEvaluationUpsertPayload
@@ -21,8 +22,120 @@ class CommissionEvaluationService:
     GROUP_SCIENTIFIC_FOUNDATION = "scientific_foundation"
     GROUP_TEXT_PROGRESS = "text_progress"
 
+    EVALUATION_COMPLETION_STATUSES = {
+        "not_started": {
+            "code": "not_started",
+            "name": "Не начато",
+            "description": "Оценки не проставлены",
+            "color": "gray",
+        },
+        "partial": {
+            "code": "partial",
+            "name": "Частично заполнено",
+            "description": "Проставлена часть оценок",
+            "color": "yellow",
+        },
+        "completed": {
+            "code": "completed",
+            "name": "Заполнено",
+            "description": "Проставлены все оценки",
+            "color": "green",
+        },
+    }
+
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def list_completion_statuses(self) -> list[dict]:
+        return list(self.EVALUATION_COMPLETION_STATUSES.values())
+
+    def get_completion_info(
+        self,
+        evaluation: CommissionMemberEvaluation,
+    ) -> dict:
+        total_count = len(evaluation.criterion_values)
+        filled_count = 0
+
+        for item in evaluation.criterion_values:
+            if self._is_criterion_value_filled(item):
+                filled_count += 1
+
+        if total_count == 0 or filled_count == 0:
+            status_code = "not_started"
+        elif filled_count == total_count:
+            status_code = "completed"
+        else:
+            status_code = "partial"
+
+        status = self.EVALUATION_COMPLETION_STATUSES[status_code]
+
+        return {
+            "completion_status": status["code"],
+            "completion_status_name": status["name"],
+            "completion_status_color": status["color"],
+            "filled_criteria_count": filled_count,
+            "total_criteria_count": total_count,
+        }
+
+    def get_or_create_my_evaluation(
+        self,
+        student_attestation_id,
+        current_user_id,
+    ) -> CommissionMemberEvaluation:
+        commission_member = self.resolve_commission_member_for_expert(
+            student_attestation_id=student_attestation_id,
+            current_user_id=current_user_id,
+        )
+
+        return self.get_or_create_evaluation(
+            student_attestation_id=student_attestation_id,
+            commission_member_id=commission_member.id,
+        )
+
+    def upsert_my_evaluation(
+        self,
+        student_attestation_id,
+        current_user_id,
+        payload: CommissionMemberEvaluationUpsertPayload,
+    ) -> CommissionMemberEvaluation:
+        commission_member = self.resolve_commission_member_for_expert(
+            student_attestation_id=student_attestation_id,
+            current_user_id=current_user_id,
+        )
+
+        return self.upsert_evaluation(
+            student_attestation_id=student_attestation_id,
+            commission_member_id=commission_member.id,
+            payload=payload,
+        )
+
+    def resolve_commission_member_for_expert(
+        self,
+        student_attestation_id,
+        current_user_id,
+    ) -> CommissionMember:
+        attestation = self._get_attestation(student_attestation_id)
+
+        if attestation.commission_id is None:
+            raise ValueError("Student attestation is not assigned to a commission")
+
+        staff_member = self.session.scalar(
+            select(StaffMember).where(StaffMember.user_id == current_user_id)
+        )
+
+        if staff_member is None:
+            raise ValueError("Expert staff profile not found")
+
+        commission_member = self.session.scalar(
+            select(CommissionMember)
+            .where(CommissionMember.commission_id == attestation.commission_id)
+            .where(CommissionMember.staff_member_id == staff_member.id)
+        )
+
+        if commission_member is None:
+            raise ValueError("Current expert is not a member of this attestation commission")
+
+        return commission_member
 
     def get_or_create_evaluation(
         self,
@@ -169,6 +282,21 @@ class CommissionEvaluationService:
                 raise ValueError(f"Criterion {item.student_attestation_criterion_id} has no boolean_value")
             if item.evaluation_type == "count" and item.count_value is None:
                 raise ValueError(f"Criterion {item.student_attestation_criterion_id} has no count_value")
+
+    def _is_criterion_value_filled(
+        self,
+        item: CommissionMemberCriterionEvaluation,
+    ) -> bool:
+        if item.evaluation_type == "score":
+            return item.score_value is not None
+
+        if item.evaluation_type == "boolean":
+            return item.boolean_value is not None
+
+        if item.evaluation_type == "count":
+            return item.count_value is not None
+
+        return False
 
     def _calculate_normalized_score(
         self,

@@ -50,6 +50,13 @@ class CommissionMemberEvaluationUpsertPayload(BaseModel):
         return value
 
 
+class EvaluationCompletionStatusRead(BaseModel):
+    code: str
+    name: str
+    description: str
+    color: str
+
+
 class CommissionMemberCriterionEvaluationRead(BaseModel):
     id: UUID
     student_attestation_criterion_id: UUID
@@ -92,6 +99,12 @@ class CommissionMemberEvaluationRead(BaseModel):
     scientific_foundation_score: Decimal | None = None
     text_progress_score: Decimal | None = None
     overall_integral_score: Decimal | None = None
+
+    completion_status: str | None = None
+    completion_status_name: str | None = None
+    completion_status_color: str | None = None
+    filled_criteria_count: int = 0
+    total_criteria_count: int = 0
 
     created_at: datetime
     updated_at: datetime
