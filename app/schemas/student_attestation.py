@@ -90,11 +90,27 @@ class ManagerStudentAttestationTableRow(BaseModel):
 
 class StudentAttestationAdmissionUpdateItem(BaseModel):
     student_attestation_id: UUID
-    is_admitted: bool
+
+    is_admitted: bool | None = None
     debt_note: str | None = None
     admission_comment: str | None = None
+    status: str | None = None
+    attestation_result: str | None = None
 
-    @field_validator("debt_note", "admission_comment", mode="before")
+    publications_count: int | None = None
+    pedagogical_practice: bool | None = None
+    research_practice: bool | None = None
+    implementation_act: bool | None = None
+    predefense_date: str | None = None
+
+    @field_validator(
+        "debt_note",
+        "admission_comment",
+        "status",
+        "attestation_result",
+        "predefense_date",
+        mode="before",
+    )
     @classmethod
     def strip_optional_strings(cls, value: object) -> object:
         if value is None:

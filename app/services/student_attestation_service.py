@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -75,33 +77,6 @@ class StudentAttestationService:
 
             average_score = self._calculate_average_score(item)
 
-            publications_count = self._extract_int_metric(
-                item,
-                codes={"publications_count", "scientific_publications", "publications"},
-                names={
-                    "Научные публикации",
-                    "Научные публикации: полное библиографическое описание с указанием списков НИУ ВШЭ",
-                },
-            )
-            pedagogical_practice = self._extract_bool_metric(
-                item,
-                codes={"pedagogical_practice", "scientific_pedagogical_practice"},
-                names={"Научно-педагогическая практика"},
-            )
-            research_practice = self._extract_bool_metric(
-                item,
-                codes={"research_practice", "scientific_research_practice"},
-                names={
-                    "Научно-исследовательская практика",
-                    "Научно-исследовательская практика (стажировки, гранты, конференции, РИДы и др.)",
-                },
-            )
-            implementation_act = self._extract_bool_metric(
-                item,
-                codes={"implementation_act", "acts_of_implementation"},
-                names={"Акты внедрения", "Акт внедрения"},
-            )
-
             rows.append(
                 {
                     "student_attestation_id": item.id,
@@ -122,11 +97,15 @@ class StudentAttestationService:
                     "status": item.status,
                     "attestation_result": item.final_decision,
                     "average_score": average_score,
-                    "publications_count": publications_count,
-                    "pedagogical_practice": pedagogical_practice,
-                    "research_practice": research_practice,
-                    "implementation_act": implementation_act,
-                    "predefense_date": None,
+                    "publications_count": student.publications_count,
+                    "pedagogical_practice": student.pedagogical_practice,
+                    "research_practice": student.research_practice,
+                    "implementation_act": student.implementation_act,
+                    "predefense_date": (
+                        student.predefense_date.isoformat()
+                        if student.predefense_date is not None
+                        else None
+                    ),
                     "status_change_reason": getattr(student, "status_change_reason", None),
                 }
             )
@@ -149,14 +128,45 @@ class StudentAttestationService:
             if student_attestation.attestation_period_id != period_id:
                 continue
 
-            student_attestation.is_admitted = item.is_admitted
-            student_attestation.debt_note = item.debt_note
-            student_attestation.admission_comment = item.admission_comment
+            fields_set = item.model_fields_set
 
-            if item.is_admitted and student_attestation.status == "draft":
-                student_attestation.status = "admitted"
-            elif not item.is_admitted and student_attestation.status == "admitted":
-                student_attestation.status = "draft"
+            if "is_admitted" in fields_set:
+                student_attestation.is_admitted = item.is_admitted
+
+            if "debt_note" in fields_set:
+                student_attestation.debt_note = item.debt_note
+
+            if "admission_comment" in fields_set:
+                student_attestation.admission_comment = item.admission_comment
+
+            if "status" in fields_set and item.status is not None:
+                student_attestation.status = item.status
+            elif "is_admitted" in fields_set:
+                if item.is_admitted and student_attestation.status == "draft":
+                    student_attestation.status = "admitted"
+                elif not item.is_admitted and student_attestation.status == "admitted":
+                    student_attestation.status = "draft"
+
+            if "attestation_result" in fields_set:
+                student_attestation.final_decision = item.attestation_result
+
+            student = student_attestation.student
+
+            if student is not None:
+                if "publications_count" in fields_set:
+                    student.publications_count = item.publications_count
+
+                if "pedagogical_practice" in fields_set:
+                    student.pedagogical_practice = item.pedagogical_practice
+
+                if "research_practice" in fields_set:
+                    student.research_practice = item.research_practice
+
+                if "implementation_act" in fields_set:
+                    student.implementation_act = item.implementation_act
+
+                if "predefense_date" in fields_set:
+                    student.predefense_date = self._parse_optional_date(item.predefense_date)
 
             updated_count += 1
 
@@ -330,3 +340,16 @@ class StudentAttestationService:
                 return None
 
         return None
+
+    def _parse_optional_date(self, value: str | date | None) -> date | None:
+        if value is None:
+            return None
+
+        if isinstance(value, date):
+            return value
+
+        value = value.strip()
+        if not value:
+            return None
+
+        return date.fromisoformat(value)

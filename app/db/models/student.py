@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -76,6 +77,12 @@ class Student(UUIDPKMixin, TimestampMixin, Base):
 
     dissertation_topic: Mapped[str | None] = mapped_column(Text, nullable=True)
     status_change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    publications_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pedagogical_practice: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    research_practice: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    implementation_act: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    predefense_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
