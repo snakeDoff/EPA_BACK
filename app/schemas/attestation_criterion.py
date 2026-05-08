@@ -16,13 +16,27 @@ class AttestationCriterionCreate(BaseModel):
     max_score: Decimal | None = None
     unit_label: str | None = None
 
+    group_code: str | None = None
+    group_name: str | None = None
+    group_sort_order: int | None = None
+    count_norm: Decimal | None = None
+
     checked_by_student: bool = False
     checked_by_supervisor: bool = False
 
     sort_order: int = 0
     is_active: bool = True
 
-    @field_validator("code", "name", "description", "evaluation_type", "unit_label", mode="before")
+    @field_validator(
+        "code",
+        "name",
+        "description",
+        "evaluation_type",
+        "unit_label",
+        "group_code",
+        "group_name",
+        mode="before",
+    )
     @classmethod
     def strip_strings(cls, value: object) -> object:
         if isinstance(value, str):
@@ -43,6 +57,13 @@ class AttestationCriterionCreate(BaseModel):
     def validate_max_score(cls, value: Decimal | None) -> Decimal | None:
         if value is not None and value < 0:
             raise ValueError("max_score must be >= 0")
+        return value
+
+    @field_validator("count_norm")
+    @classmethod
+    def validate_count_norm(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and value <= 0:
+            raise ValueError("count_norm must be > 0")
         return value
 
     @field_validator("checked_by_supervisor")

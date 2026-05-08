@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -16,6 +16,11 @@ from app.schemas.commission_evaluation import CommissionMemberEvaluationUpsertPa
 
 
 class CommissionEvaluationService:
+    GROUP_LOGIC_HYPOTHESIS = "logic_hypothesis"
+    GROUP_METHODS = "methods"
+    GROUP_SCIENTIFIC_FOUNDATION = "scientific_foundation"
+    GROUP_TEXT_PROGRESS = "text_progress"
+
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -139,10 +144,13 @@ class CommissionEvaluationService:
                 value_row.boolean_value = None
 
             value_row.comment = item.comment
+            value_row.normalized_score = self._calculate_normalized_score(value_row)
 
         evaluation.status = payload.status
         evaluation.overall_comment = payload.overall_comment
         evaluation.overall_recommendation = payload.overall_recommendation
+
+        self._recalculate_integral_scores(evaluation)
 
         if payload.status == "submitted":
             self._validate_submittable(evaluation)
@@ -161,6 +169,130 @@ class CommissionEvaluationService:
                 raise ValueError(f"Criterion {item.student_attestation_criterion_id} has no boolean_value")
             if item.evaluation_type == "count" and item.count_value is None:
                 raise ValueError(f"Criterion {item.student_attestation_criterion_id} has no count_value")
+
+    def _calculate_normalized_score(
+        self,
+        value_row: CommissionMemberCriterionEvaluation,
+    ) -> Decimal | None:
+        criterion = value_row.student_attestation_criterion
+
+        if value_row.evaluation_type == "score":
+            if value_row.score_value is None:
+                return None
+
+            max_score = criterion.max_score
+            if max_score is None or Decimal(max_score) <= 0:
+                return None
+
+            raw = Decimal(value_row.score_value) / Decimal(max_score)
+            return self._clamp_normalized(raw)
+
+        if value_row.evaluation_type == "boolean":
+            if value_row.boolean_value is None:
+                return None
+
+            return Decimal("1.0000") if value_row.boolean_value else Decimal("0.0000")
+
+        if value_row.evaluation_type == "count":
+            if value_row.count_value is None:
+                return None
+
+            count_norm = criterion.count_norm or Decimal("1")
+            if Decimal(count_norm) <= 0:
+                count_norm = Decimal("1")
+
+            raw = Decimal(value_row.count_value) / Decimal(count_norm)
+            return self._clamp_normalized(raw)
+
+        return None
+
+    def _recalculate_integral_scores(
+        self,
+        evaluation: CommissionMemberEvaluation,
+    ) -> None:
+        grouped_scores: dict[str, list[Decimal]] = {
+            self.GROUP_LOGIC_HYPOTHESIS: [],
+            self.GROUP_METHODS: [],
+            self.GROUP_SCIENTIFIC_FOUNDATION: [],
+            self.GROUP_TEXT_PROGRESS: [],
+        }
+
+        for value_row in evaluation.criterion_values:
+            if value_row.normalized_score is None:
+                continue
+
+            criterion = value_row.student_attestation_criterion
+            group_code = self._normalize_group_code(criterion.group_code, criterion.group_name)
+
+            if group_code not in grouped_scores:
+                continue
+
+            grouped_scores[group_code].append(Decimal(value_row.normalized_score))
+
+        evaluation.logic_hypothesis_score = self._average_or_none(
+            grouped_scores[self.GROUP_LOGIC_HYPOTHESIS]
+        )
+        evaluation.methods_score = self._average_or_none(
+            grouped_scores[self.GROUP_METHODS]
+        )
+        evaluation.scientific_foundation_score = self._average_or_none(
+            grouped_scores[self.GROUP_SCIENTIFIC_FOUNDATION]
+        )
+        evaluation.text_progress_score = self._average_or_none(
+            grouped_scores[self.GROUP_TEXT_PROGRESS]
+        )
+
+        existing_group_scores = [
+            score
+            for score in [
+                evaluation.logic_hypothesis_score,
+                evaluation.methods_score,
+                evaluation.scientific_foundation_score,
+                evaluation.text_progress_score,
+            ]
+            if score is not None
+        ]
+
+        evaluation.overall_integral_score = self._average_or_none(existing_group_scores)
+
+    def _normalize_group_code(
+        self,
+        group_code: str | None,
+        group_name: str | None,
+    ) -> str | None:
+        if group_code:
+            return group_code
+
+        if group_name is None:
+            return None
+
+        normalized_name = group_name.strip().lower()
+
+        mapping = {
+            "логика и гипотеза": self.GROUP_LOGIC_HYPOTHESIS,
+            "методы": self.GROUP_METHODS,
+            "научный задел": self.GROUP_SCIENTIFIC_FOUNDATION,
+            "прогресс текста": self.GROUP_TEXT_PROGRESS,
+        }
+
+        return mapping.get(normalized_name)
+
+    def _average_or_none(self, values: list[Decimal]) -> Decimal | None:
+        if not values:
+            return None
+
+        return self._round_decimal(sum(values) / Decimal(len(values)))
+
+    def _clamp_normalized(self, value: Decimal) -> Decimal:
+        if value < 0:
+            value = Decimal("0")
+        if value > 1:
+            value = Decimal("1")
+
+        return self._round_decimal(value)
+
+    def _round_decimal(self, value: Decimal) -> Decimal:
+        return Decimal(value).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
     def _get_attestation(self, student_attestation_id) -> StudentAttestation:
         stmt = (

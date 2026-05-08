@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -114,6 +113,11 @@ class AttestationCriterion(UUIDPKMixin, TimestampMixin, Base):
     evaluation_type: Mapped[str] = mapped_column(String(50), nullable=False)
     max_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     unit_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    group_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    group_sort_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    count_norm: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
     checked_by_student: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     checked_by_supervisor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

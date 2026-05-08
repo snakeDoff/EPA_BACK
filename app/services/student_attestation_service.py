@@ -260,6 +260,10 @@ class StudentAttestationService:
                     evaluation_type=template_criterion.evaluation_type,
                     max_score=template_criterion.max_score,
                     unit_label=template_criterion.unit_label,
+                    group_code=template_criterion.group_code,
+                    group_name=template_criterion.group_name,
+                    group_sort_order=template_criterion.group_sort_order,
+                    count_norm=template_criterion.count_norm,
                     checked_by_student=template_criterion.checked_by_student,
                     checked_by_supervisor=template_criterion.checked_by_supervisor,
                     sort_order=template_criterion.sort_order,
@@ -294,52 +298,6 @@ class StudentAttestationService:
             return None
 
         return round(sum(score_values) / len(score_values), 2)
-
-    def _extract_int_metric(
-        self,
-        attestation: StudentAttestation,
-        *,
-        codes: set[str],
-        names: set[str],
-    ) -> int | None:
-        for member_evaluation in attestation.member_evaluations:
-            if member_evaluation.status != "submitted":
-                continue
-
-            for criterion_value in member_evaluation.criterion_values:
-                criterion = criterion_value.student_attestation_criterion
-                if criterion.code in codes or criterion.name in names:
-                    if criterion_value.count_value is not None:
-                        return int(criterion_value.count_value)
-
-        for criterion in attestation.criteria:
-            if criterion.code in codes or criterion.name in names:
-                return None
-
-        return None
-
-    def _extract_bool_metric(
-        self,
-        attestation: StudentAttestation,
-        *,
-        codes: set[str],
-        names: set[str],
-    ) -> bool | None:
-        for member_evaluation in attestation.member_evaluations:
-            if member_evaluation.status != "submitted":
-                continue
-
-            for criterion_value in member_evaluation.criterion_values:
-                criterion = criterion_value.student_attestation_criterion
-                if criterion.code in codes or criterion.name in names:
-                    if criterion_value.boolean_value is not None:
-                        return bool(criterion_value.boolean_value)
-
-        for criterion in attestation.criteria:
-            if criterion.code in codes or criterion.name in names:
-                return None
-
-        return None
 
     def _parse_optional_date(self, value: str | date | None) -> date | None:
         if value is None:

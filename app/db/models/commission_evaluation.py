@@ -16,7 +16,6 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -40,11 +39,6 @@ class CommissionMemberEvaluation(UUIDPKMixin, TimestampMixin, Base):
             "status in ('draft', 'submitted')",
             name="chk_member_evaluations_status",
         ),
-        CheckConstraint(
-            "overall_recommendation is null or overall_recommendation in "
-            "('passed', 'passed_conditionally', 'revision_required', 'not_passed')",
-            name="chk_member_evaluations_overall_recommendation",
-        ),
         Index("ix_member_evaluations_student_attestation_id", "student_attestation_id"),
         Index("ix_member_evaluations_commission_member_id", "commission_member_id"),
         Index("ix_member_evaluations_status", "status"),
@@ -63,8 +57,14 @@ class CommissionMemberEvaluation(UUIDPKMixin, TimestampMixin, Base):
 
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
     overall_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    overall_recommendation: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    overall_recommendation: Mapped[str | None] = mapped_column(String(255), nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    logic_hypothesis_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    methods_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    scientific_foundation_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    text_progress_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    overall_integral_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
 
     student_attestation: Mapped["StudentAttestation"] = relationship(back_populates="member_evaluations")
     commission_member: Mapped["CommissionMember"] = relationship(back_populates="evaluations")
@@ -117,6 +117,8 @@ class CommissionMemberCriterionEvaluation(UUIDPKMixin, TimestampMixin, Base):
     score_value: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     boolean_value: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     count_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    normalized_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
 
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
