@@ -11,6 +11,7 @@ from app.schemas.commission_evaluation import (
     CommissionMemberEvaluationRead,
     CommissionMemberEvaluationUpsertPayload,
     EvaluationCompletionStatusRead,
+    EvaluationSubmitStatusRead,
 )
 from app.services.commission_evaluation_service import CommissionEvaluationService
 
@@ -86,6 +87,18 @@ def _build_read_model(
             for item in evaluation.criterion_values
         ],
     )
+
+
+@router.get(
+    "/evaluation-submit-statuses",
+    response_model=list[EvaluationSubmitStatusRead],
+)
+def list_evaluation_submit_statuses(
+    db: Session = Depends(get_db),
+) -> list[EvaluationSubmitStatusRead]:
+    service = CommissionEvaluationService(db)
+    items = service.list_submit_statuses()
+    return [EvaluationSubmitStatusRead(**item) for item in items]
 
 
 @router.get(

@@ -26,7 +26,7 @@ class CommissionMemberCriterionEvaluationUpdateItem(BaseModel):
 
 
 class CommissionMemberEvaluationUpsertPayload(BaseModel):
-    status: str = "draft"
+    status: str = "submitted"
     overall_comment: str | None = None
     overall_recommendation: str | None = None
     criteria: list[CommissionMemberCriterionEvaluationUpdateItem]
@@ -48,6 +48,12 @@ class CommissionMemberEvaluationUpsertPayload(BaseModel):
             value = value.strip()
             return value or None
         return value
+
+
+class EvaluationSubmitStatusRead(BaseModel):
+    code: str
+    name: str
+    description: str
 
 
 class EvaluationCompletionStatusRead(BaseModel):
