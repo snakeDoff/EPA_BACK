@@ -207,7 +207,8 @@ class StudentAttestationService:
                 .where(
                     and_(
                         AttestationCriterionTemplate.period_type == period.type,
-                        AttestationCriterionTemplate.program_duration_years == student.education_program.duration_years,
+                        AttestationCriterionTemplate.program_duration_years
+                        == student.education_program.duration_years,
                         AttestationCriterionTemplate.course == student.course,
                         AttestationCriterionTemplate.season == period.season,
                         AttestationCriterionTemplate.is_active.is_(True),
@@ -267,6 +268,136 @@ class StudentAttestationService:
             "skipped_count": len(skipped_students),
             "skipped_students": skipped_students,
         }
+
+    def _get_value(self, obj, field: str, default=None):
+        if obj is None:
+            return default
+
+        if isinstance(obj, dict):
+            return obj.get(field, default)
+
+        return getattr(obj, field, default)
+
+    def _first_not_none(self, *values):
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+    def _normalize_metric_key(self, value) -> str:
+        if value is None:
+            return ""
+
+        return (
+            str(value)
+            .strip()
+            .lower()
+            .replace("ё", "е")
+            .replace("-", "_")
+            .replace(" ", "_")
+        )
+
+    def _criterion_matches(self, criterion_value, aliases) -> bool:
+        if aliases is None:
+            aliases = []
+
+        if isinstance(aliases, str):
+            aliases = [aliases]
+
+        normalized_aliases = {
+            self._normalize_metric_key(alias)
+            for alias in aliases
+            if alias is not None
+        }
+
+        criterion = (
+            self._get_value(criterion_value, "criterion")
+            or self._get_value(criterion_value, "attestation_criterion")
+            or self._get_value(criterion_value, "student_attestation_criterion")
+        )
+
+        possible_keys = [
+            self._get_value(criterion_value, "code"),
+            self._get_value(criterion_value, "name"),
+            self._get_value(criterion_value, "title"),
+            self._get_value(criterion_value, "label"),
+            self._get_value(criterion_value, "student_attestation_criterion_id"),
+            self._get_value(criterion, "id"),
+            self._get_value(criterion, "code"),
+            self._get_value(criterion, "name"),
+            self._get_value(criterion, "title"),
+            self._get_value(criterion, "label"),
+        ]
+
+        normalized_keys = {
+            self._normalize_metric_key(key)
+            for key in possible_keys
+            if key is not None
+        }
+
+        return bool(normalized_aliases & normalized_keys)
+
+    def _extract_int_metric(self, criteria_values, aliases, default: int = 0) -> int:
+        for criterion_value in criteria_values or []:
+            if not self._criterion_matches(criterion_value, aliases):
+                continue
+
+            value = self._first_not_none(
+                self._get_value(criterion_value, "count_value"),
+                self._get_value(criterion_value, "score_value"),
+                self._get_value(criterion_value, "value"),
+            )
+
+            if value is None:
+                return default
+
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        return default
+
+    def _extract_float_metric(self, criteria_values, aliases, default: float = 0.0) -> float:
+        for criterion_value in criteria_values or []:
+            if not self._criterion_matches(criterion_value, aliases):
+                continue
+
+            value = self._first_not_none(
+                self._get_value(criterion_value, "score_value"),
+                self._get_value(criterion_value, "count_value"),
+                self._get_value(criterion_value, "value"),
+            )
+
+            if value is None:
+                return default
+
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
+        return default
+
+    def _extract_bool_metric(self, criteria_values, aliases, default: bool = False) -> bool:
+        for criterion_value in criteria_values or []:
+            if not self._criterion_matches(criterion_value, aliases):
+                continue
+
+            value = self._get_value(criterion_value, "boolean_value")
+
+            if value is None:
+                return default
+
+            if isinstance(value, bool):
+                return value
+
+            if isinstance(value, str):
+                return value.strip().lower() in {"true", "1", "yes", "да"}
+
+            return bool(value)
+
+        return default
 
     def _calculate_average_score(self, attestation: StudentAttestation) -> float | None:
         values: list[float] = []

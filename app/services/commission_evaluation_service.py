@@ -22,6 +22,14 @@ class CommissionEvaluationService:
     GROUP_SCIENTIFIC_FOUNDATION = "scientific_foundation"
     GROUP_TEXT_PROGRESS = "text_progress"
 
+    EVALUATION_SUBMIT_STATUSES = {
+        "submitted": {
+            "code": "submitted",
+            "name": "Отправлено",
+            "description": "Оценки сохранены и учитываются в расчетах. Их можно изменить повторным сохранением.",
+        },
+    }
+
     EVALUATION_COMPLETION_STATUSES = {
         "not_started": {
             "code": "not_started",
@@ -70,6 +78,9 @@ class CommissionEvaluationService:
 
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def list_submit_statuses(self) -> list[dict]:
+        return list(self.EVALUATION_SUBMIT_STATUSES.values())
 
     def list_completion_statuses(self) -> list[dict]:
         return list(self.EVALUATION_COMPLETION_STATUSES.values())
@@ -188,7 +199,8 @@ class CommissionEvaluationService:
             evaluation = CommissionMemberEvaluation(
                 student_attestation_id=student_attestation_id,
                 commission_member_id=commission_member_id,
-                status="draft",
+                status="submitted",
+                submitted_at=datetime.now(timezone.utc),
             )
             self.session.add(evaluation)
             self.session.flush()
@@ -284,17 +296,12 @@ class CommissionEvaluationService:
             value_row.comment = item.comment
             value_row.normalized_score = self._calculate_normalized_score(value_row)
 
-        evaluation.status = payload.status
+        evaluation.status = "submitted"
         evaluation.overall_comment = payload.overall_comment
         evaluation.overall_recommendation = payload.overall_recommendation
+        evaluation.submitted_at = datetime.now(timezone.utc)
 
         self._recalculate_integral_scores(evaluation)
-
-        if payload.status == "submitted":
-            self._validate_submittable(evaluation)
-            evaluation.submitted_at = datetime.now(timezone.utc)
-        else:
-            evaluation.submitted_at = None
 
         self.session.flush()
         self._sync_student_metrics_from_submitted_evaluations(
@@ -430,15 +437,6 @@ class CommissionEvaluationService:
         patterns: tuple[str, ...],
     ) -> bool:
         return any(pattern in value for pattern in patterns)
-
-    def _validate_submittable(self, evaluation: CommissionMemberEvaluation) -> None:
-        for item in evaluation.criterion_values:
-            if item.evaluation_type == "score" and item.score_value is None:
-                raise ValueError(f"Criterion {item.student_attestation_criterion_id} has no score_value")
-            if item.evaluation_type == "boolean" and item.boolean_value is None:
-                raise ValueError(f"Criterion {item.student_attestation_criterion_id} has no boolean_value")
-            if item.evaluation_type == "count" and item.count_value is None:
-                raise ValueError(f"Criterion {item.student_attestation_criterion_id} has no count_value")
 
     def _is_criterion_value_filled(
         self,
