@@ -11,6 +11,8 @@ from app.api.v1.academic_director_attestation_lifecycle import (
 from app.api.v1.academic_director_attestation_periods import (
     router as academic_director_attestation_periods_router,
 )
+from app.api.v1.academic_director_commissions import router as academic_director_commissions_router
+from app.api.v1.analytics import router as analytics_router
 from app.api.v1.commission_member_evaluations import (
     router as commission_member_evaluations_router,
 )
@@ -23,7 +25,6 @@ from app.api.v1.manager_student_attestations import (
 )
 from app.api.v1.manager_students import router as manager_students_router
 from app.api.v1.manager_students_crud import router as manager_students_crud_router
-from app.api.v1.academic_director_commissions import router as academic_director_commissions_router
 
 api_router = APIRouter()
 
@@ -41,3 +42,5 @@ api_router.include_router(expert_staff_members_router)
 api_router.include_router(expert_students_router)
 api_router.include_router(expert_commissions_router)
 api_router.include_router(commission_member_evaluations_router)
+
+api_router.include_router(analytics_router)
