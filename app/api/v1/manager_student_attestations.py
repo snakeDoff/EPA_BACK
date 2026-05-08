@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
 from app.schemas.student_attestation import (
-    GenerateStudentAttestationsPayload,
-    GenerateStudentAttestationsResult,
     ManagerStudentAttestationTableRow,
     StudentAttestationBulkAdmissionUpdatePayload,
     StudentAttestationBulkAdmissionUpdateResult,
@@ -20,21 +18,6 @@ router = APIRouter(
     prefix="/manager/attestation-periods",
     tags=["manager-student-attestations"],
 )
-
-
-@router.post("/{period_id}/student-attestations/generate", response_model=GenerateStudentAttestationsResult)
-def generate_student_attestations(
-    period_id: UUID,
-    payload: GenerateStudentAttestationsPayload,
-    db: Session = Depends(get_db),
-) -> GenerateStudentAttestationsResult:
-    service = StudentAttestationService(db)
-    result = service.generate_for_period(
-        period_id=period_id,
-        department_id=payload.department_id,
-        only_active_students=payload.only_active_students,
-    )
-    return GenerateStudentAttestationsResult(**result)
 
 
 @router.get("/{period_id}/student-attestations", response_model=list[StudentAttestationRead])

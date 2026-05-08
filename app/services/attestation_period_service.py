@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AttestationPeriod
 from app.schemas.attestation_period import AttestationPeriodCreate, AttestationPeriodUpdate
+from app.services.student_attestation_service import StudentAttestationService
 
 
 class AttestationPeriodService:
@@ -41,6 +42,15 @@ class AttestationPeriodService:
         self.session.add(period)
         self.session.commit()
         self.session.refresh(period)
+
+        if period.type == "attestation":
+            StudentAttestationService(self.session).generate_for_period(
+                period_id=period.id,
+                department_id=None,
+                only_active_students=True,
+            )
+            self.session.refresh(period)
+
         return period
 
     def update_period(
