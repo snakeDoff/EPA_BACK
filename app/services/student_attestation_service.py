@@ -316,6 +316,106 @@ class StudentAttestationService:
         except TypeError:
             target.append(value)
 
+    def _collect_search_values(
+        self,
+        aliases=None,
+        codes=None,
+        names=None,
+        ids=None,
+        filters: dict | None = None,
+    ) -> list:
+        search_values = []
+
+        self._add_search_values(search_values, aliases)
+        self._add_search_values(search_values, codes)
+        self._add_search_values(search_values, names)
+        self._add_search_values(search_values, ids)
+
+        if filters:
+            for value in filters.values():
+                self._add_search_values(search_values, value)
+
+        return search_values
+
+    def _get_metric_items(self, source):
+        if source is None:
+            return []
+
+        if isinstance(source, dict):
+            if "criteria" in source:
+                return list(source.get("criteria") or [])
+
+            if "criterion_values" in source:
+                return list(source.get("criterion_values") or [])
+
+            return [source]
+
+        criteria = getattr(source, "criteria", None)
+        if criteria is not None:
+            return list(criteria or [])
+
+        criterion_values = getattr(source, "criterion_values", None)
+        if criterion_values is not None:
+            return list(criterion_values or [])
+
+        if isinstance(source, (str, bytes)):
+            return []
+
+        try:
+            return list(source)
+        except TypeError:
+            return [source]
+
+    def _get_direct_metric_value(self, source, search_values):
+        if source is None:
+            return None
+
+        targets = [source]
+
+        student = self._get_value(source, "student")
+        if student is not None:
+            targets.append(student)
+
+        normalized_search_values = {
+            self._normalize_metric_key(value)
+            for value in search_values
+            if value is not None
+        }
+
+        if not normalized_search_values:
+            return None
+
+        for target in targets:
+            if target is None:
+                continue
+
+            if isinstance(target, dict):
+                for key, value in target.items():
+                    if self._normalize_metric_key(key) in normalized_search_values:
+                        if value is not None:
+                            return value
+                continue
+
+            for raw_key in search_values:
+                if raw_key is None:
+                    continue
+
+                possible_attr_names = {
+                    str(raw_key),
+                    self._normalize_metric_key(raw_key),
+                }
+
+                for attr_name in possible_attr_names:
+                    if not attr_name:
+                        continue
+
+                    if hasattr(target, attr_name):
+                        value = getattr(target, attr_name)
+                        if value is not None:
+                            return value
+
+        return None
+
     def _criterion_matches(
         self,
         criterion_value,
@@ -325,15 +425,13 @@ class StudentAttestationService:
         ids=None,
         **filters,
     ) -> bool:
-        search_values = []
-
-        self._add_search_values(search_values, aliases)
-        self._add_search_values(search_values, codes)
-        self._add_search_values(search_values, names)
-        self._add_search_values(search_values, ids)
-
-        for value in filters.values():
-            self._add_search_values(search_values, value)
+        search_values = self._collect_search_values(
+            aliases=aliases,
+            codes=codes,
+            names=names,
+            ids=ids,
+            filters=filters,
+        )
 
         normalized_search_values = {
             self._normalize_metric_key(value)
@@ -382,10 +480,25 @@ class StudentAttestationService:
         default: int = 0,
         **filters,
     ) -> int:
-        if criteria_values is None:
-            criteria_values = filters.pop("criteria", None) or filters.pop("criterion_values", None)
+        filters = dict(filters)
 
-        for criterion_value in criteria_values or []:
+        if criteria_values is None:
+            criteria_values = (
+                filters.pop("criteria", None)
+                or filters.pop("criterion_values", None)
+                or filters.pop("attestation", None)
+                or filters.pop("student_attestation", None)
+            )
+
+        search_values = self._collect_search_values(
+            aliases=aliases,
+            codes=codes,
+            names=names,
+            ids=ids,
+            filters=filters,
+        )
+
+        for criterion_value in self._get_metric_items(criteria_values):
             if not self._criterion_matches(
                 criterion_value,
                 aliases=aliases,
@@ -403,10 +516,18 @@ class StudentAttestationService:
             )
 
             if value is None:
-                return default
+                continue
 
             try:
                 return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        direct_value = self._get_direct_metric_value(criteria_values, search_values)
+
+        if direct_value is not None:
+            try:
+                return int(direct_value)
             except (TypeError, ValueError):
                 return default
 
@@ -422,10 +543,25 @@ class StudentAttestationService:
         default: float = 0.0,
         **filters,
     ) -> float:
-        if criteria_values is None:
-            criteria_values = filters.pop("criteria", None) or filters.pop("criterion_values", None)
+        filters = dict(filters)
 
-        for criterion_value in criteria_values or []:
+        if criteria_values is None:
+            criteria_values = (
+                filters.pop("criteria", None)
+                or filters.pop("criterion_values", None)
+                or filters.pop("attestation", None)
+                or filters.pop("student_attestation", None)
+            )
+
+        search_values = self._collect_search_values(
+            aliases=aliases,
+            codes=codes,
+            names=names,
+            ids=ids,
+            filters=filters,
+        )
+
+        for criterion_value in self._get_metric_items(criteria_values):
             if not self._criterion_matches(
                 criterion_value,
                 aliases=aliases,
@@ -443,14 +579,34 @@ class StudentAttestationService:
             )
 
             if value is None:
-                return default
+                continue
 
             try:
                 return float(value)
             except (TypeError, ValueError):
                 return default
 
+        direct_value = self._get_direct_metric_value(criteria_values, search_values)
+
+        if direct_value is not None:
+            try:
+                return float(direct_value)
+            except (TypeError, ValueError):
+                return default
+
         return default
+
+    def _to_bool(self, value, default: bool = False) -> bool:
+        if value is None:
+            return default
+
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes", "да", "y"}
+
+        return bool(value)
 
     def _extract_bool_metric(
         self,
@@ -462,10 +618,25 @@ class StudentAttestationService:
         default: bool = False,
         **filters,
     ) -> bool:
-        if criteria_values is None:
-            criteria_values = filters.pop("criteria", None) or filters.pop("criterion_values", None)
+        filters = dict(filters)
 
-        for criterion_value in criteria_values or []:
+        if criteria_values is None:
+            criteria_values = (
+                filters.pop("criteria", None)
+                or filters.pop("criterion_values", None)
+                or filters.pop("attestation", None)
+                or filters.pop("student_attestation", None)
+            )
+
+        search_values = self._collect_search_values(
+            aliases=aliases,
+            codes=codes,
+            names=names,
+            ids=ids,
+            filters=filters,
+        )
+
+        for criterion_value in self._get_metric_items(criteria_values):
             if not self._criterion_matches(
                 criterion_value,
                 aliases=aliases,
@@ -476,18 +647,22 @@ class StudentAttestationService:
             ):
                 continue
 
-            value = self._get_value(criterion_value, "boolean_value")
+            value = self._first_not_none(
+                self._get_value(criterion_value, "boolean_value"),
+                self._get_value(criterion_value, "value"),
+                self._get_value(criterion_value, "score_value"),
+                self._get_value(criterion_value, "count_value"),
+            )
 
             if value is None:
-                return default
+                continue
 
-            if isinstance(value, bool):
-                return value
+            return self._to_bool(value, default=default)
 
-            if isinstance(value, str):
-                return value.strip().lower() in {"true", "1", "yes", "да"}
+        direct_value = self._get_direct_metric_value(criteria_values, search_values)
 
-            return bool(value)
+        if direct_value is not None:
+            return self._to_bool(direct_value, default=default)
 
         return default
 
