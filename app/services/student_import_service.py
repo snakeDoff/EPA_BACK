@@ -127,6 +127,10 @@ class StudentImportService:
         department_id,
         education_program_id,
     ) -> Student:
+        status_change_reason = self._normalize_status_change_reason(
+            row.status_change_reason
+        )
+
         student = Student(
             last_name=row.last_name,
             first_name=row.first_name,
@@ -142,8 +146,8 @@ class StudentImportService:
             department_id=department_id,
             supervisor_name_raw=row.supervisor_name_raw,
             dissertation_topic=row.dissertation_topic,
-            status_change_reason=row.status_change_reason,
-            is_active=True,
+            status_change_reason=status_change_reason,
+            is_active=status_change_reason is None,
         )
         self.session.add(student)
         self.session.flush()
@@ -156,6 +160,10 @@ class StudentImportService:
         department_id,
         education_program_id,
     ) -> None:
+        status_change_reason = self._normalize_status_change_reason(
+            row.status_change_reason
+        )
+
         student.last_name = row.last_name
         student.first_name = row.first_name
         student.middle_name = row.middle_name
@@ -170,8 +178,8 @@ class StudentImportService:
         student.department_id = department_id
         student.supervisor_name_raw = row.supervisor_name_raw
         student.dissertation_topic = row.dissertation_topic
-        student.status_change_reason = row.status_change_reason
-        student.is_active = True
+        student.status_change_reason = status_change_reason
+        student.is_active = status_change_reason is None
 
     def _ensure_user_for_student(
         self,
@@ -236,3 +244,14 @@ class StudentImportService:
                 user.is_deleted = False
 
         return created
+
+    @staticmethod
+    def _normalize_status_change_reason(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+
+        return normalized
