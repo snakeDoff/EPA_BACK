@@ -26,6 +26,8 @@ from app.api.v1.manager_student_attestations import (
 from app.api.v1.manager_students import router as manager_students_router
 from app.api.v1.manager_students_crud import router as manager_students_crud_router
 
+from app.api.v1.expert_commission_students import router as expert_commission_students_router
+
 api_router = APIRouter()
 
 api_router.include_router(health_router)
@@ -44,3 +46,4 @@ api_router.include_router(expert_commissions_router)
 api_router.include_router(commission_member_evaluations_router)
 
 api_router.include_router(analytics_router)
+api_router.include_router(expert_commission_students_router)
