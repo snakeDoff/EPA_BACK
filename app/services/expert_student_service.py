@@ -54,32 +54,13 @@ class ExpertStudentService:
 
             average_score = self._calculate_average_score(item)
 
-            publications_count = self._extract_int_metric(
-                item,
-                codes={"publications_count", "scientific_publications", "publications"},
-                names={
-                    "Научные публикации",
-                    "Научные публикации: полное библиографическое описание с указанием списков НИУ ВШЭ",
-                },
-            )
-            pedagogical_practice = self._extract_bool_metric(
-                item,
-                codes={"pedagogical_practice", "scientific_pedagogical_practice"},
-                names={"Научно-педагогическая практика"},
-            )
-            research_practice = self._extract_bool_metric(
-                item,
-                codes={"research_practice", "scientific_research_practice"},
-                names={
-                    "Научно-исследовательская практика",
-                    "Научно-исследовательская практика (стажировки, гранты, конференции, РИДы и др.)",
-                },
-            )
-            implementation_act = self._extract_bool_metric(
-                item,
-                codes={"implementation_act", "acts_of_implementation"},
-                names={"Акты внедрения", "Акт внедрения"},
-            )
+            # Эти поля уже хранятся в глобальной таблице students.
+            # Поэтому здесь не пересчитываем их из критериев текущей аттестации,
+            # иначе для некоторых страниц/API могут прилетать null.
+            publications_count = student.publications_count
+            pedagogical_practice = student.pedagogical_practice
+            research_practice = student.research_practice
+            implementation_act = student.implementation_act
 
             rows.append(
                 {
