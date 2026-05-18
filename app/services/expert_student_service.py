@@ -15,7 +15,7 @@ class ExpertStudentService:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def list_students_by_department(self, department_id):
+    def list_students_by_department(self, department_id, attestation_period_id=None):
         stmt = (
             select(StudentAttestation)
             .options(
@@ -32,8 +32,14 @@ class ExpertStudentService:
                 ),
             )
             .where(StudentAttestation.department_id == department_id)
-            .order_by(StudentAttestation.student_id)
         )
+
+        if attestation_period_id is not None:
+            stmt = stmt.where(
+                StudentAttestation.attestation_period_id == attestation_period_id
+            )
+
+        stmt = stmt.order_by(StudentAttestation.student_id)
 
         items = list(self.session.scalars(stmt).unique().all())
 
@@ -58,13 +64,6 @@ class ExpertStudentService:
 
             average_score = self._calculate_average_score(item)
 
-            # Эти показатели хранятся в глобальной карточке аспиранта.
-            # Их не надо заново вытаскивать из критериев конкретной аттестации.
-            publications_count = student.publications_count
-            pedagogical_practice = student.pedagogical_practice
-            research_practice = student.research_practice
-            implementation_act = student.implementation_act
-
             rows.append(
                 {
                     "student_attestation_id": item.id,
@@ -85,10 +84,10 @@ class ExpertStudentService:
                     "status": item.status,
                     "attestation_result": item.final_decision,
                     "average_score": average_score,
-                    "publications_count": publications_count,
-                    "pedagogical_practice": pedagogical_practice,
-                    "research_practice": research_practice,
-                    "implementation_act": implementation_act,
+                    "publications_count": student.publications_count,
+                    "pedagogical_practice": student.pedagogical_practice,
+                    "research_practice": student.research_practice,
+                    "implementation_act": student.implementation_act,
                     "predefense_date": getattr(student, "predefense_date", None),
                     "status_change_reason": getattr(student, "status_change_reason", None),
                 }

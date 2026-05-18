@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -56,9 +56,15 @@ def get_current_expert_department_id(
 
 @router.get("", response_model=list[ManagerStudentAttestationTableRow])
 def list_expert_students(
+    attestation_period_id: UUID | None = Query(default=None),
     department_id: UUID = Depends(get_current_expert_department_id),
     db: Session = Depends(get_db),
 ) -> list[ManagerStudentAttestationTableRow]:
     service = ExpertStudentService(db)
-    rows = service.list_students_by_department(department_id)
+
+    rows = service.list_students_by_department(
+        department_id=department_id,
+        attestation_period_id=attestation_period_id,
+    )
+
     return [ManagerStudentAttestationTableRow(**row) for row in rows]
