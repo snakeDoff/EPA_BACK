@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import select
 
 from app.db.models import (
     AttestationCommission,
     CommissionMember,
+    CommissionMemberCriterionEvaluation,
+    CommissionMemberEvaluation,
     StaffMember,
     Student,
     StudentAttestation,
@@ -21,6 +22,8 @@ from app.schemas.commission import (
 
 
 class CommissionService:
+    LOCKED_STATUSES = {"formed", "completed", "confirmed"}
+
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -28,7 +31,9 @@ class CommissionService:
         stmt = (
             select(AttestationCommission)
             .options(
-                selectinload(AttestationCommission.members).selectinload(CommissionMember.staff_member)
+                selectinload(AttestationCommission.members).selectinload(
+                    CommissionMember.staff_member
+                )
             )
             .where(AttestationCommission.attestation_period_id == period_id)
             .where(AttestationCommission.created_by == created_by)
@@ -40,7 +45,9 @@ class CommissionService:
         stmt = (
             select(AttestationCommission)
             .options(
-                selectinload(AttestationCommission.members).selectinload(CommissionMember.staff_member)
+                selectinload(AttestationCommission.members).selectinload(
+                    CommissionMember.staff_member
+                )
             )
             .where(AttestationCommission.id == commission_id)
         )
@@ -74,7 +81,8 @@ class CommissionService:
 
         added_staff_member_ids = set()
 
-        # Автоматически добавляем эксперта-создателя в комиссию
+        # Эксперт-создатель комиссии автоматически становится председателем.
+        # Это закрывает ошибку "Commission must have a chair".
         if created_by is not None:
             creator_staff_member = self.session.scalar(
                 select(StaffMember).where(StaffMember.user_id == created_by)
@@ -89,7 +97,10 @@ class CommissionService:
                         staff_member_id=creator_staff_member.id,
                         role_in_commission="chair",
                         membership_type="mandatory",
-                        participation_note="Председатель комиссии, добавлен автоматически при создании комиссии",
+                        participation_note=(
+                            "Председатель комиссии, добавлен автоматически "
+                            "при создании комиссии"
+                        ),
                         is_voting_member=True,
                         sort_order=0,
                     )
@@ -97,7 +108,7 @@ class CommissionService:
 
                 added_staff_member_ids.add(creator_staff_member.id)
 
-        # Если members предоставлены, добавляем остальных членов комиссии
+        # Добавляем остальных членов комиссии, если они были переданы в payload.
         if payload.members:
             for item in payload.members:
                 if item.staff_member_id in added_staff_member_ids:
@@ -127,12 +138,12 @@ class CommissionService:
         if commission is None:
             raise ValueError("Commission not found")
 
-        if commission.status == "confirmed":
-            raise ValueError("Confirmed commission cannot be edited")
+        if self._is_commission_locked(commission):
+            raise ValueError("Formed or completed commission cannot be edited")
 
         update_data = payload.model_dump(exclude_unset=True)
 
-        # department_id из payload игнорируем: он должен идти от эксперта
+        # department_id из payload игнорируем: департамент комиссии берётся от эксперта.
         update_data.pop("department_id", None)
 
         for field, value in update_data.items():
@@ -149,7 +160,11 @@ class CommissionService:
         if not commission.members:
             raise ValueError("Commission must contain at least one member")
 
-        chair_count = sum(1 for member in commission.members if member.role_in_commission == "chair")
+        chair_count = sum(
+            1
+            for member in commission.members
+            if member.role_in_commission == "chair"
+        )
         if chair_count == 0:
             raise ValueError("Commission must have a chair")
 
@@ -162,7 +177,10 @@ class CommissionService:
         if commission.meeting_location is None:
             raise ValueError("Commission meeting_location is required before confirmation")
 
-        commission.status = "confirmed"
+        # В рабочей БД раньше был constraint на draft/formed/completed,
+        # поэтому подтверждённую комиссию переводим в formed, а не в confirmed.
+        commission.status = "formed"
+
         self.session.commit()
         self.session.refresh(commission)
         return commission
@@ -178,8 +196,8 @@ class CommissionService:
         if commission is None:
             raise ValueError("Commission not found")
 
-        if commission.status == "confirmed":
-            raise ValueError("Confirmed commission cannot be changed")
+        if self._is_commission_locked(commission):
+            raise ValueError("Formed or completed commission cannot be changed")
 
         requested_ids = list(dict.fromkeys(payload.student_attestation_ids))
 
@@ -237,13 +255,40 @@ class CommissionService:
             "requested_count": len(requested_ids),
         }
 
+    def list_commission_student_attestations(self, commission_id, created_by):
+        commission = self.get_commission(commission_id, created_by=created_by)
+
+        if commission is None:
+            raise ValueError("Commission not found")
+
+        stmt = (
+            select(StudentAttestation)
+            .options(
+                selectinload(StudentAttestation.student).selectinload(
+                    Student.education_program
+                ),
+                selectinload(StudentAttestation.department),
+                selectinload(StudentAttestation.supervisor),
+                selectinload(StudentAttestation.criteria),
+                selectinload(StudentAttestation.member_evaluations)
+                .selectinload(CommissionMemberEvaluation.criterion_values)
+                .selectinload(
+                    CommissionMemberCriterionEvaluation.student_attestation_criterion
+                ),
+            )
+            .where(StudentAttestation.commission_id == commission.id)
+            .order_by(StudentAttestation.student_id)
+        )
+
+        return list(self.session.scalars(stmt).unique().all())
+
     def add_commission_member(self, commission_id, payload: CommissionMemberCreate, created_by):
         commission = self.get_commission(commission_id, created_by=created_by)
         if commission is None:
             raise ValueError("Commission not found")
 
-        if commission.status == "confirmed":
-            raise ValueError("Confirmed commission cannot be edited")
+        if self._is_commission_locked(commission):
+            raise ValueError("Formed or completed commission cannot be edited")
 
         self._validate_staff_member(payload.staff_member_id)
 
@@ -259,8 +304,8 @@ class CommissionService:
         member = CommissionMember(
             commission_id=commission_id,
             staff_member_id=payload.staff_member_id,
-            role_in_commission=payload.role_in_commission or "member",  # Default if None
-            membership_type=payload.membership_type or "additional",  # Default if None
+            role_in_commission=payload.role_in_commission or "member",
+            membership_type=payload.membership_type or "additional",
             participation_note=payload.participation_note,
             is_voting_member=payload.is_voting_member,
             sort_order=payload.sort_order,
@@ -279,8 +324,8 @@ class CommissionService:
         if commission is None:
             raise ValueError("Commission not found")
 
-        if commission.status == "confirmed":
-            raise ValueError("Confirmed commission cannot be edited")
+        if self._is_commission_locked(commission):
+            raise ValueError("Formed or completed commission cannot be edited")
 
         update_data = payload.model_dump(exclude_unset=True)
         for field, value in update_data.items():
@@ -299,24 +344,19 @@ class CommissionService:
         if commission is None:
             raise ValueError("Commission not found")
 
-        if commission.status == "confirmed":
-            raise ValueError("Confirmed commission cannot be edited")
+        if self._is_commission_locked(commission):
+            raise ValueError("Formed or completed commission cannot be edited")
 
         self.session.delete(member)
         self.session.commit()
 
-    def _validate_staff_member(self, staff_member_id):
-        staff_member = self.session.get(StaffMember, staff_member_id)
-        if staff_member is None:
-            raise ValueError(f"Staff member not found: {staff_member_id}")
-        if not staff_member.is_active or not staff_member.can_be_commission_member:
-            raise ValueError(f"Staff member cannot be included in commission: {staff_member_id}")
-        
     def list_all_commissions_for_director(self, period_id):
         stmt = (
             select(AttestationCommission)
             .options(
-                selectinload(AttestationCommission.members).selectinload(CommissionMember.staff_member)
+                selectinload(AttestationCommission.members).selectinload(
+                    CommissionMember.staff_member
+                )
             )
             .where(AttestationCommission.attestation_period_id == period_id)
             .order_by(
@@ -326,3 +366,16 @@ class CommissionService:
             )
         )
         return list(self.session.scalars(stmt).unique().all())
+
+    def _validate_staff_member(self, staff_member_id):
+        staff_member = self.session.get(StaffMember, staff_member_id)
+        if staff_member is None:
+            raise ValueError(f"Staff member not found: {staff_member_id}")
+
+        if not staff_member.is_active or not staff_member.can_be_commission_member:
+            raise ValueError(
+                f"Staff member cannot be included in commission: {staff_member_id}"
+            )
+
+    def _is_commission_locked(self, commission: AttestationCommission) -> bool:
+        return commission.status in self.LOCKED_STATUSES
