@@ -189,6 +189,7 @@ class AssignStudentAttestationsToCommissionPayload(BaseModel):
 
 class AssignStudentAttestationsToCommissionResult(BaseModel):
     updated_count: int
+    requested_count: int
 
 
 class ConfirmCommissionResult(BaseModel):

@@ -87,9 +87,9 @@ class CommissionService:
                     CommissionMember(
                         commission_id=commission.id,
                         staff_member_id=creator_staff_member.id,
-                        role_in_commission="member",
+                        role_in_commission="chair",
                         membership_type="mandatory",
-                        participation_note="Создатель комиссии",
+                        participation_note="Председатель комиссии, добавлен автоматически при создании комиссии",
                         is_voting_member=True,
                         sort_order=0,
                     )
@@ -174,48 +174,68 @@ class CommissionService:
         created_by,
     ) -> dict:
         commission = self.get_commission(commission_id, created_by=created_by)
+
         if commission is None:
             raise ValueError("Commission not found")
 
         if commission.status == "confirmed":
             raise ValueError("Confirmed commission cannot be changed")
 
+        requested_ids = list(dict.fromkeys(payload.student_attestation_ids))
+
+        if not requested_ids:
+            raise ValueError("student_attestation_ids cannot be empty")
+
+        stmt = select(StudentAttestation).where(StudentAttestation.id.in_(requested_ids))
+        attestations = list(self.session.scalars(stmt).all())
+
+        attestations_by_id = {
+            item.id: item
+            for item in attestations
+        }
+
+        not_found_ids = [
+            item_id
+            for item_id in requested_ids
+            if item_id not in attestations_by_id
+        ]
+
+        if not_found_ids:
+            raise ValueError(
+                "Student attestations not found: "
+                + ", ".join(str(item_id) for item_id in not_found_ids)
+            )
+
+        wrong_period_ids = [
+            item.id
+            for item in attestations
+            if item.attestation_period_id != commission.attestation_period_id
+        ]
+
+        if wrong_period_ids:
+            raise ValueError(
+                "Student attestations belong to another attestation period: "
+                + ", ".join(str(item_id) for item_id in wrong_period_ids)
+            )
+
         updated_count = 0
 
-        for attestation_id in payload.student_attestation_ids:
-            item = self.session.get(StudentAttestation, attestation_id)
-            if item is None:
-                continue
-
-            if item.attestation_period_id != commission.attestation_period_id:
-                continue
+        for item_id in requested_ids:
+            item = attestations_by_id[item_id]
 
             item.commission_id = commission.id
+
             if item.is_admitted:
                 item.status = "ready_for_commission"
+
             updated_count += 1
 
         self.session.commit()
-        return {"updated_count": updated_count}
 
-    def list_commission_student_attestations(self, commission_id, created_by):
-        commission = self.get_commission(commission_id, created_by=created_by)
-        if commission is None:
-            raise ValueError("Commission not found")
-
-        stmt = (
-            select(StudentAttestation)
-            .options(
-                selectinload(StudentAttestation.student).selectinload(Student.education_program),
-                selectinload(StudentAttestation.department),
-                selectinload(StudentAttestation.supervisor),
-                selectinload(StudentAttestation.criteria),
-                selectinload(StudentAttestation.member_evaluations),
-            )
-            .where(StudentAttestation.commission_id == commission_id)
-            .order_by(StudentAttestation.student_id)
-        )
-        return list(self.session.scalars(stmt).unique().all())
+        return {
+            "updated_count": updated_count,
+            "requested_count": len(requested_ids),
+        }
 
     def add_commission_member(self, commission_id, payload: CommissionMemberCreate, created_by):
         commission = self.get_commission(commission_id, created_by=created_by)
